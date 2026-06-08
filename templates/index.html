@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Netflix Prize Recommender Dashboard</title>
+    <!-- Google Fonts: Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS Styles -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Chart.js for beautiful evaluation graphs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- App Container -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="brand-net">NET</span><span class="brand-flix">FLIX</span>
+                <span class="brand-sub">REC</span>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-target="dashboard-section">
+                    <i class="fa-solid fa-chart-line"></i> Dashboard
+                </button>
+                <button class="nav-btn" data-target="eda-section">
+                    <i class="fa-solid fa-chart-pie"></i> EDA Analytics
+                </button>
+                <button class="nav-btn" data-target="recommend-section">
+                    <i class="fa-solid fa-circle-play"></i> Get Recommendations
+                </button>
+                <button class="nav-btn" data-target="similarity-section">
+                    <i class="fa-solid fa-magnifying-glass"></i> Similar Movies
+                </button>
+                <button class="nav-btn" data-target="sandbox-section">
+                    <i class="fa-solid fa-user-plus"></i> New User Sandbox
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <p>Netflix Prize Engine</p>
+                <span class="status-badge online"><span class="dot"></span> Online</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="main-header">
+                <div class="header-title">
+                    <h1 id="page-title">Dashboard Overview</h1>
+                    <p class="subtitle" id="page-subtitle">Evaluation metrics, model comparisons, and dataset details.</p>
+                </div>
+                <div class="user-profile">
+                    <i class="fa-solid fa-user-circle"></i>
+                    <span>Admin Mode</span>
+                </div>
+            </header>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="tab-content active">
+                <!-- Statistics Cards Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon red-glow"><i class="fa-solid fa-users"></i></div>
+                        <div class="stat-info">
+                            <h3>Active Users</h3>
+                            <p id="stat-users" class="stat-num">-</p>
+                            <span class="stat-desc">Top active profiles filtered</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red-glow"><i class="fa-solid fa-film"></i></div>
+                        <div class="stat-info">
+                            <h3>Popular Movies</h3>
+                            <p id="stat-movies" class="stat-num">-</p>
+                            <span class="stat-desc">Most rated titles filtered</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red-glow"><i class="fa-solid fa-star"></i></div>
+                        <div class="stat-info">
+                            <h3>Total Ratings</h3>
+                            <p id="stat-ratings" class="stat-num">-</p>
+                            <span class="stat-desc">Interactions in training set</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon red-glow"><i class="fa-solid fa-chart-pie"></i></div>
+                        <div class="stat-info">
+                            <h3>Matrix Sparsity</h3>
+                            <p id="stat-sparsity" class="stat-num">-</p>
+                            <span class="stat-desc">Zero rating ratio</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics & Model Comparison -->
+                <div class="dashboard-details">
+                    <div class="card-panel table-panel">
+                        <h2><i class="fa-solid fa-table"></i> Model Comparison Matrix</h2>
+                        <div class="table-responsive">
+                            <table class="metrics-table" id="metrics-table">
+                                <thead>
+                                    <tr>
+                                        <th>Model</th>
+                                        <th>RMSE (↓)</th>
+                                        <th>MAE (↓)</th>
+                                        <th>MAP@10 (↑)</th>
+                                        <th>Precision@10 (↑)</th>
+                                        <th>Recall@10 (↑)</th>
+                                        <th>NDCG@10 (↑)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr><td colspan="7" class="loading-cell">Loading evaluation metrics...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="model-status-tags" id="model-status-tags">
+                            <!-- Model status badges loaded via API -->
+                        </div>
+                    </div>
+
+                    <div class="card-panel chart-panel">
+                        <h2><i class="fa-solid fa-chart-simple"></i> Accuracy vs Ranking Metrics</h2>
+                        <div class="chart-container">
+                            <canvas id="metricsChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- EDA Analytics Section -->
+            <section id="eda-section" class="tab-content">
+                <div class="eda-gallery">
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-chart-column"></i> Rating Distribution</h3>
+                        <p class="panel-desc">Shows the frequency of rating values (1-5 stars) across the filtered dataset. Reveals that Netflix users skew positive, with 4 stars being the most common rating.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/01_rating_distribution.png" alt="Rating Distribution" class="eda-img" onclick="openEdaModal(this.src, 'Rating Distribution: frequency of ratings from 1 to 5 stars')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-users-viewfinder"></i> Ratings per User</h3>
+                        <p class="panel-desc">Log-scale distribution of rating counts across the top 5,000 active users. Essential to understand user engagement and collaborative filtering support.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/02_ratings_per_user.png" alt="Ratings per User" class="eda-img" onclick="openEdaModal(this.src, 'Ratings per User: log-scale user activity distribution')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-film"></i> Ratings per Movie</h3>
+                        <p class="panel-desc">Log-scale distribution of rating counts across the 2,000 popular movies. Visualizes the long tail effect in movie viewing patterns.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/03_ratings_per_movie.png" alt="Ratings per Movie" class="eda-img" onclick="openEdaModal(this.src, 'Ratings per Movie: log-scale movie rating frequency')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-list-ol"></i> Top 20 Most Rated Movies</h3>
+                        <p class="panel-desc">The most popular titles in our subset by total review counts. Blockbusters like <em>Miss Congeniality</em> and <em>Independence Day</em> dominate the interaction matrix.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/04_top_20_movies.png" alt="Top 20 Most Rated Movies" class="eda-img" onclick="openEdaModal(this.src, 'Top 20 Most Rated Movies: sorted bar chart of popular titles')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-timeline"></i> Rating Trends over Time</h3>
+                        <p class="panel-desc">Monthly average rating changes over the dataset history. Helps detect temporal shifts in user rating habits and system behaviors.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/05_rating_trends.png" alt="Rating Trends" class="eda-img" onclick="openEdaModal(this.src, 'Rating Trends over Time: average rating over the years')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-border-all"></i> Data Sparsity Visualization</h3>
+                        <p class="panel-desc">A visual density heatmap of a 500x500 user-movie rating slice. Illustrates the level of sparsity (our dataset is 46.47% filled, which is highly dense compared to raw Netflix data).</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/06_sparsity_heatmap.png" alt="Interaction Matrix Sparsity" class="eda-img" onclick="openEdaModal(this.src, 'Data Sparsity: visual mapping of rating densities')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-circle-half-stroke"></i> Average Rating per Movie</h3>
+                        <p class="panel-desc">Frequency distribution of average ratings across all movies. Highlights that very few movies average below 2.0 or above 4.5.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/07_movie_averages.png" alt="Average Movie Rating" class="eda-img" onclick="openEdaModal(this.src, 'Average Movie Rating: distribution plot')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-calendar-days"></i> User Activity Heatmap</h3>
+                        <p class="panel-desc">Temporal rating counts broken down by day of the week vs month/year. Captures peak viewing seasons and weekend user habits.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/08_user_activity_heatmap.png" alt="User Activity Heatmap" class="eda-img" onclick="openEdaModal(this.src, 'User Activity Heatmap: ratings counts by calendar period')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-compass-drafting"></i> SVD Learning Curves</h3>
+                        <p class="panel-desc">Training vs validation loss (RMSE) over training epochs. Highlights the optimal epoch stopping point to prevent overfitting.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/09_svd_learning_curves.png" alt="SVD Learning Curves" class="eda-img" onclick="openEdaModal(this.src, 'SVD Learning Curves: RMSE performance over training epochs')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-people-arrows"></i> User Similarity Matrix</h3>
+                        <p class="panel-desc">Pairwise user similarity scores matrix computed via cosine similarity on the sparse interaction matrix.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/10_user_similarity_heatmap.png" alt="User Similarity Heatmap" class="eda-img" onclick="openEdaModal(this.src, 'User Similarity Heatmap: cosine similarity clustering')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-arrows-split-up-and-left"></i> Item Similarity Matrix</h3>
+                        <p class="panel-desc">Pairwise movie similarity scores matrix computed via cosine similarity. Serves as the basis for Item-CF and Hybrid recommendations.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/11_item_similarity_heatmap.png" alt="Item Similarity Heatmap" class="eda-img" onclick="openEdaModal(this.src, 'Item Similarity Heatmap: cosine similarity clustering')">
+                        </div>
+                    </div>
+                    
+                    <div class="card-panel eda-card">
+                        <h3><i class="fa-solid fa-sliders"></i> Model Comparison Metrics</h3>
+                        <p class="panel-desc">Grouped bar chart comparing SVD, User-CF, Item-CF, and Hybrid algorithms across all error and ranking dimensions.</p>
+                        <div class="eda-img-container">
+                            <img src="/report_figures/12_model_comparison.png" alt="Model Comparison Metrics" class="eda-img" onclick="openEdaModal(this.src, 'Model Comparison Metrics: bar chart')">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Get Recommendations Section -->
+            <section id="recommend-section" class="tab-content">
+                <div class="control-panel card-panel">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="recs-user-id">Select or Enter User ID</label>
+                            <div class="input-with-suggest">
+                                <input type="number" id="recs-user-id" placeholder="e.g. 387418, 305344, 2439493" min="1">
+                                <div class="quick-select">
+                                    <span class="suggest-tag" onclick="selectUser(387418)">User 387418 (Active)</span>
+                                    <span class="suggest-tag" onclick="selectUser(305344)">User 305344 (Active)</span>
+                                    <span class="suggest-tag" onclick="selectUser(99999)">User 99999 (Cold-Start)</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="recs-model">Algorithm Model</label>
+                            <select id="recs-model">
+                                <option value="hybrid">Weighted SVD-ItemCF Hybrid (Best Ranking)</option>
+                                <option value="svd">Matrix Factorization SVD (Best Rating Accuracy)</option>
+                                <option value="user_cf">User-Based Collaborative Filtering</option>
+                                <option value="item_cf">Item-Based Collaborative Filtering</option>
+                            </select>
+                        </div>
+                        <button class="action-btn" id="btn-get-recs"><i class="fa-solid fa-wand-magic-sparkles"></i> Predict & Recommend</button>
+                    </div>
+                </div>
+
+                <!-- Recommendation Output Area -->
+                <div class="recs-results-container" style="display:none;" id="recs-results-container">
+                    <div class="user-profile-header card-panel">
+                        <div class="profile-info">
+                            <div class="avatar"><i class="fa-solid fa-circle-user"></i></div>
+                            <div>
+                                <h2 id="recs-profile-title">User #387418</h2>
+                                <p id="recs-profile-desc">Status: Active User (48 ratings in training history)</p>
+                            </div>
+                        </div>
+                        <div class="model-badge-container">
+                            <span class="model-badge" id="recs-active-model">HYBRID SVD-ITEMCF</span>
+                        </div>
+                    </div>
+
+                    <div class="recs-grid" id="recs-movie-grid">
+                        <!-- Movie cards go here -->
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div class="empty-state" id="recs-empty-state">
+                    <i class="fa-solid fa-play-circle"></i>
+                    <p>Enter a User ID and select an algorithm to generate top-10 movie recommendations.</p>
+                </div>
+            </section>
+
+            <!-- Similarity Explorer Section -->
+            <section id="similarity-section" class="tab-content">
+                <div class="control-panel card-panel">
+                    <div class="form-row single-row">
+                        <div class="form-group autocomplete">
+                            <label for="similarity-search">Search Movie Title</label>
+                            <div class="search-input-wrapper">
+                                <input type="text" id="similarity-search" placeholder="Type a movie (e.g. Raiders, Rings, Finding Nemo, Godfather...)" autocomplete="off">
+                                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                                <div id="autocomplete-list" class="autocomplete-items"></div>
+                            </div>
+                        </div>
+                        <button class="action-btn" id="btn-find-similar" disabled><i class="fa-solid fa-network-wired"></i> Find Similar Movies</button>
+                    </div>
+                </div>
+
+                <!-- Similar Movies Results -->
+                <div class="recs-results-container" style="display:none;" id="similar-results-container">
+                    <div class="user-profile-header card-panel">
+                        <div class="profile-info">
+                            <div class="avatar"><i class="fa-solid fa-film"></i></div>
+                            <div>
+                                <h2 id="similar-target-title">Raiders of the Lost Ark (1981)</h2>
+                                <p>Finding top similar titles using Item-Item Cosine Similarity matrix</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="recs-grid" id="similar-movie-grid">
+                        <!-- Movie cards go here -->
+                    </div>
+                </div>
+
+                <!-- Empty State -->
+                <div class="empty-state" id="similar-empty-state">
+                    <i class="fa-solid fa-search"></i>
+                    <p>Search and select a movie in the search box to find similar movies based on collaborative filtering patterns.</p>
+                </div>
+            </section>
+
+            <!-- Sandbox Section -->
+            <section id="sandbox-section" class="tab-content">
+                <div class="sandbox-layout">
+                    <!-- Left: Profile Ratings Builder -->
+                    <div class="card-panel sandbox-builder">
+                        <h2><i class="fa-solid fa-user-pen"></i> Build Your Custom Rating Profile</h2>
+                        <p class="panel-desc">Rate 1 to 5 movies. Our system will update your user profile vector and compute recommendations using the Item-CF similarity mapping in real-time.</p>
+                        
+                        <div class="sandbox-search-row autocomplete">
+                            <div class="search-input-wrapper">
+                                <input type="text" id="sandbox-search" placeholder="Search a movie to rate..." autocomplete="off">
+                                <i class="fa-solid fa-plus-circle search-icon"></i>
+                                <div id="sandbox-autocomplete-list" class="autocomplete-items"></div>
+                            </div>
+                        </div>
+
+                        <!-- User Rated List -->
+                        <div class="rated-movies-list" id="rated-movies-list">
+                            <div class="no-ratings-placeholder">
+                                <i class="fa-solid fa-folder-open"></i>
+                                <p>No ratings added yet. Search a movie above and select a star rating to populate your profile.</p>
+                            </div>
+                        </div>
+
+                        <button class="action-btn full-width" id="btn-sandbox-recs" disabled>
+                            <i class="fa-solid fa-bolt"></i> Generate Custom Recommendations
+                        </button>
+                    </div>
+
+                    <!-- Right: Recommendations Output -->
+                    <div class="sandbox-recs-output">
+                        <div class="card-panel" id="sandbox-recs-container" style="display:none;">
+                            <h2><i class="fa-solid fa-star-half-stroke"></i> Real-time Personalized Output</h2>
+                            
+                            <div class="explanation-box" id="sandbox-explanation-box">
+                                <div class="exp-icon"><i class="fa-solid fa-lightbulb"></i></div>
+                                <div class="exp-text">
+                                    <strong>Why these recommendations?</strong>
+                                    <p id="sandbox-explanation">Based on your ratings, we found movies matching your tastes.</p>
+                                </div>
+                            </div>
+
+                            <div class="sandbox-recs-list" id="sandbox-recs-list">
+                                <!-- Recommended list items -->
+                            </div>
+                        </div>
+
+                        <!-- Sandbox Empty State -->
+                        <div class="empty-state" id="sandbox-empty-state">
+                            <i class="fa-solid fa-compass"></i>
+                            <p>Rate movies on the left panel and click "Generate" to receive real-time cold-start predictions.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal for Explanation Popup -->
+    <div class="modal-overlay" id="explanation-modal">
+        <div class="modal-card card-panel">
+            <button class="close-modal-btn" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+            <h2><i class="fa-solid fa-lightbulb text-red"></i> Recommendation Explanation</h2>
+            <div class="modal-body">
+                <div class="modal-movie-title" id="modal-movie-title">The Wedding Date (2005)</div>
+                <div class="modal-explanation-content" id="modal-explanation-content">
+                    Loading explanation text...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="action-btn text-center" onclick="closeModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Image Preview -->
+    <div class="modal-overlay" id="image-modal">
+        <div class="image-modal-card">
+            <button class="close-modal-btn" onclick="closeImageModal()"><i class="fa-solid fa-xmark"></i></button>
+            <img src="" id="modal-img-preview" alt="Preview">
+            <div id="modal-img-caption" class="image-caption">Caption</div>
+        </div>
+    </div>
+    <!-- Main App JS Logic -->
+    <script src="/static/app.js"></script>
+</body>
+</html>

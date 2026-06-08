@@ -1,0 +1,15 @@
+pandas
+numpy
+scipy
+scikit-learn
+scikit-surprise
+matplotlib
+seaborn
+plotly
+jupyter
+tqdm
+pickle5; python_version < "3.8"
+pyarrow
+fastparquet
+tabulate
+flask
