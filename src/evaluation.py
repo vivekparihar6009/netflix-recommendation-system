@@ -59,7 +59,9 @@ def evaluate_ranking_metrics(
     test_data: pd.DataFrame, 
     train_data: pd.DataFrame, 
     k: int = 10, 
-    relevance_threshold: float = 3.5
+    relevance_threshold: float = 3.5,
+    max_users: int = 200,
+    random_state: int = 42
 ) -> Dict[str, float]:
     """
     Computes MAP@K, Precision@K, Recall@K, and NDCG@K for the model on the test data.
@@ -72,6 +74,9 @@ def evaluate_ranking_metrics(
     """
     all_movie_ids = list(train_data["movie_id"].unique())
     test_users = test_data["user_id"].unique()
+    if len(test_users) > max_users:
+        rng = np.random.default_rng(random_state)
+        test_users = rng.choice(test_users, size=max_users, replace=False)
     
     precisions = []
     recalls = []

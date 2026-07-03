@@ -107,126 +107,49 @@ class Recommender:
         if not self.item_cf_model:
             return self.get_global_popular_movies(k)
             
-        # Separate positive (>= 3.0) and negative (< 3.0) feedback
-        liked_ratings = {mid: r for mid, r in user_ratings.items() if r >= 3.0}
-        disliked_ratings = {mid: r for mid, r in user_ratings.items() if r < 3.0}
-        
+        # Get item similarity matrix from Item-CF model
         item_sim = self.item_cf_model.item_similarity
-        disliked_mids = list(disliked_ratings.keys())
         
-        if not liked_ratings:
-            # Negative-only feedback: Recommend popular movies but filter out movies similar to disliked ones
-            print("Negative-only feedback detected. Filtering popular movies.")
-            popular_movies = self.get_global_popular_movies(150) # Get larger pool of candidates
-            
-            filtered_recs = []
-            for title, score, year in popular_movies:
-                mid = self.movie_title_to_id.get(title.lower())
-                if not mid or mid in disliked_mids:
-                    continue
-                
-                # Check similarity to disliked movies
-                is_similar_to_disliked = False
-                if mid in self.mapper.movie_to_idx:
-                    m_idx = self.mapper.movie_to_idx[mid]
-                    for disliked_mid in disliked_mids:
-                        if disliked_mid in self.mapper.movie_to_idx:
-                            d_idx = self.mapper.movie_to_idx[disliked_mid]
-                            if item_sim[m_idx, d_idx] > 0.20: # Slightly higher threshold
-                                is_similar_to_disliked = True
-                                break
-                
-                if not is_similar_to_disliked:
-                    filtered_recs.append((title, score, year))
-                    if len(filtered_recs) >= k:
-                        break
-            
-            # Backfill with remaining popular movies if the filters were too aggressive
-            if len(filtered_recs) < k:
-                for title, score, year in popular_movies:
-                    mid = self.movie_title_to_id.get(title.lower())
-                    if not mid or mid in disliked_mids:
-                        continue
-                    if not any(x[0] == title for x in filtered_recs):
-                        filtered_recs.append((title, score, year))
-                        if len(filtered_recs) >= k:
-                            break
-                            
-            return filtered_recs
-            
-        # Get recommendations based on liked ratings
         # Array to aggregate similarities
         agg_scores = np.zeros(self.mapper.num_movies)
         sim_sums = np.zeros(self.mapper.num_movies)
         
         rated_mids = list(user_ratings.keys())
+        rated_idxs = []
         
-        for mid, rating in liked_ratings.items():
+        for mid, rating in user_ratings.items():
             if mid in self.mapper.movie_to_idx:
                 m_idx = self.mapper.movie_to_idx[mid]
+                rated_idxs.append(m_idx)
                 
-                # Weight similarity by rating deviation (rating - 2.5) to favor positive feedback
-                weight = rating - 2.5
+                # Weight similarity by rating deviation (rating - 3.0) to favor positive feedback
+                weight = rating - 3.0
                 similarities = item_sim[m_idx]
                 
                 agg_scores += similarities * weight
                 sim_sums += np.abs(similarities)
                 
-        # Exclude already rated movies (both liked and disliked)
-        for mid in rated_mids:
-            if mid in self.mapper.movie_to_idx:
-                m_idx = self.mapper.movie_to_idx[mid]
-                agg_scores[m_idx] = -np.inf
+        # Exclude already rated movies
+        for m_idx in rated_idxs:
+            agg_scores[m_idx] = -np.inf
             
-        # Normalize scores for predicted rating magnitude
-        norm_scores = agg_scores.copy()
+        # Normalize scores
         non_zero_sim = sim_sums > 0
-        norm_scores[non_zero_sim] /= sim_sums[non_zero_sim]
+        agg_scores[non_zero_sim] /= sim_sums[non_zero_sim]
         
-        # Sort candidates descending by raw agg_scores to preserve similarity ranking order
-        candidate_indices = np.argsort(agg_scores)[::-1]
+        # Sort and return top-K
+        top_indices = np.argsort(agg_scores)[::-1][:k]
         
         recs = []
-        for idx in candidate_indices:
-            if agg_scores[idx] == -np.inf or agg_scores[idx] <= 0.0:
+        for idx in top_indices:
+            if agg_scores[idx] == -np.inf:
                 continue
-                
             mid = self.mapper.idx_to_movie[idx]
+            title = self.movie_id_to_title.get(mid, f"Movie {mid}")
+            year = self.movie_id_to_year.get(mid, 0)
+            score = float(agg_scores[idx] + 3.0) # Shift back to 1-5 scale
+            recs.append((title, score, year))
             
-            # Filter out movies that are similar to disliked movies
-            is_similar_to_disliked = False
-            for disliked_mid in disliked_mids:
-                if disliked_mid in self.mapper.movie_to_idx:
-                    d_idx = self.mapper.movie_to_idx[disliked_mid]
-                    # If similarity to a disliked movie exceeds the threshold, filter it out
-                    if item_sim[idx, d_idx] > 0.20:
-                        is_similar_to_disliked = True
-                        break
-                        
-            if not is_similar_to_disliked:
-                title = self.movie_id_to_title.get(mid, f"Movie {mid}")
-                year = self.movie_id_to_year.get(mid, 0)
-                score = float(norm_scores[idx] + 2.5) # Shift back to 1-5 scale using normalized score
-                recs.append((title, score, year))
-                if len(recs) >= k:
-                    break
-                    
-        # Backfill with remaining candidate movies if filters were too aggressive
-        if len(recs) < k:
-            for idx in candidate_indices:
-                if agg_scores[idx] == -np.inf:
-                    continue
-                mid = self.mapper.idx_to_movie[idx]
-                title = self.movie_id_to_title.get(mid, f"Movie {mid}")
-                
-                # Check if it is already in recs
-                if not any(x[0] == title for x in recs):
-                    year = self.movie_id_to_year.get(mid, 0)
-                    score = float(norm_scores[idx] + 2.5)
-                    recs.append((title, score, year))
-                    if len(recs) >= k:
-                        break
-                        
         return recs
 
     def predict_hybrid_rating(self, user_id: int, movie_id: int) -> float:
@@ -284,28 +207,96 @@ class Recommender:
             
         watched_movies = set(user_ratings_in_train["movie_id"])
         
-        scores = []
-        for mid in self.movie_id_to_title.keys():
+        # Build index-to-movie and movie-to-index mappings for fast array construction
+        all_movie_ids = list(self.movie_id_to_title.keys())
+        n_movies = len(all_movie_ids)
+        
+        if model_type == "hybrid" or model_type == "svd":
+            # --- Vectorized SVD scoring ---
+            svd_scores = np.full(n_movies, 3.5)
+            if self.svd_model:
+                trainset = self.svd_model.trainset
+                try:
+                    u_inner = trainset.to_inner_uid(user_id)
+                    pu = self.svd_model.pu[u_inner]          # user latent vector
+                    qi = self.svd_model.qi                    # all item latent vectors
+                    bu = self.svd_model.bu[u_inner]           # user bias
+                    bi = self.svd_model.bi                    # all item biases
+                    global_mean = trainset.global_mean
+                    # Map each movie_id to its inner SVD item index
+                    for i, mid in enumerate(all_movie_ids):
+                        try:
+                            i_inner = trainset.to_inner_iid(mid)
+                            svd_scores[i] = global_mean + bu + bi[i_inner] + qi[i_inner].dot(pu)
+                        except Exception:
+                            svd_scores[i] = global_mean + bu
+                except Exception:
+                    # User not in SVD trainset; fall back to global mean
+                    pass
+        
+        if model_type == "hybrid" or model_type == "item_cf":
+            # --- Vectorized ItemCF scoring ---
+            item_cf_scores = np.full(n_movies, 3.0)
+            if self.item_cf_model:
+                u_idx = self.mapper.user_to_idx[user_id]
+                user_rating_vec = self.item_cf_model.interaction_matrix[u_idx].toarray().flatten()
+                all_item_scores = self.item_cf_model.item_similarity.dot(user_rating_vec)
+                sim_sums = np.abs(self.item_cf_model.item_similarity).dot(
+                    (user_rating_vec > 0).astype(float)
+                )
+                all_item_scores = np.divide(
+                    all_item_scores, sim_sums,
+                    out=np.full_like(sim_sums, 3.0),
+                    where=sim_sums > 0
+                )
+                # Map internal item indices back to the all_movie_ids order
+                for i, mid in enumerate(all_movie_ids):
+                    if mid in self.mapper.movie_to_idx:
+                        m_idx = self.mapper.movie_to_idx[mid]
+                        item_cf_scores[i] = float(np.clip(all_item_scores[m_idx], 1.0, 5.0))
+        
+        if model_type == "user_cf":
+            # UserCF: compute scores per movie (no matrix shortcut available)
+            user_cf_scores = np.full(n_movies, 3.0)
+            if self.user_cf_model:
+                for i, mid in enumerate(all_movie_ids):
+                    user_cf_scores[i] = self.user_cf_model.predict_rating(user_id, mid)
+        
+        # Combine scores based on model_type
+        alpha = self.alpha
+        if model_type == "hybrid" and self.svd_model and self.item_cf_model:
+            hybrid_scores = alpha * svd_scores + (1 - alpha) * item_cf_scores
+        elif model_type == "hybrid" and self.svd_model:
+            hybrid_scores = svd_scores
+        elif model_type == "hybrid":
+            hybrid_scores = item_cf_scores
+        elif model_type == "svd":
+            hybrid_scores = svd_scores
+        elif model_type == "item_cf":
+            hybrid_scores = item_cf_scores
+        elif model_type == "user_cf":
+            hybrid_scores = user_cf_scores
+        else:
+            hybrid_scores = np.full(n_movies, 3.0)
+        
+        # Exclude watched movies by setting their scores to -inf
+        for i, mid in enumerate(all_movie_ids):
             if mid in watched_movies:
-                continue
-                
-            if model_type == "hybrid":
-                pred = self.predict_hybrid_rating(user_id, mid)
-            elif model_type == "svd" and self.svd_model:
-                pred = self.svd_model.predict(uid=user_id, iid=mid).est
-            elif model_type == "item_cf" and self.item_cf_model:
-                pred = self.item_cf_model.predict_rating(user_id, mid)
-            elif model_type == "user_cf" and self.user_cf_model:
-                pred = self.user_cf_model.predict_rating(user_id, mid)
-            else:
-                pred = 3.0 # default fallback
-                
+                hybrid_scores[i] = -np.inf
+        
+        # Return top-k from a single argsort
+        top_indices = np.argsort(hybrid_scores)[::-1][:k]
+        
+        result = []
+        for i in top_indices:
+            if hybrid_scores[i] == -np.inf:
+                break
+            mid = all_movie_ids[i]
             title = self.movie_id_to_title.get(mid, f"Movie {mid}")
             year = self.movie_id_to_year.get(mid, 0)
-            scores.append((title, float(pred), year))
-            
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:k]
+            result.append((title, float(hybrid_scores[i]), year))
+        
+        return result
 
     def get_similar_movies(self, movie_title: str, k: int = 10) -> List[Tuple[str, float, int]]:
         """

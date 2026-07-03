@@ -28,28 +28,20 @@ class ItemCollaborativeFiltering:
         # 1. Build interaction matrix (users x movies)
         self.interaction_matrix = build_interaction_matrix(train_df, self.mapper)
         
-        # Convert to dense for calculations
-        dense_matrix = self.interaction_matrix.toarray()
-        
-        # Calculate item means (over rated users)
+        # Operate directly on the sparse matrix to avoid densification
+        # Calculate item means (over rated users) using getcol()
         self.item_means = np.zeros(self.mapper.num_movies)
         for m in range(self.mapper.num_movies):
-            movie_ratings = dense_matrix[:, m]
-            rated_indices = movie_ratings > 0
-            if np.any(rated_indices):
-                self.item_means[m] = np.mean(movie_ratings[rated_indices])
-            else:
-                self.item_means[m] = 3.0
+            col = self.interaction_matrix.getcol(m)
+            rated = col.data  # only non-zero values, no densification
+            self.item_means[m] = np.mean(rated) if len(rated) > 0 else 3.0
                 
-        # Calculate user means (over rated items)
+        # Calculate user means (over rated items) using getrow()
         self.user_means = np.zeros(self.mapper.num_users)
         for u in range(self.mapper.num_users):
-            user_ratings = dense_matrix[u]
-            rated_indices = user_ratings > 0
-            if np.any(rated_indices):
-                self.user_means[u] = np.mean(user_ratings[rated_indices])
-            else:
-                self.user_means[u] = 3.0
+            row = self.interaction_matrix.getrow(u)
+            rated = row.data  # only non-zero values, no densification
+            self.user_means[u] = np.mean(rated) if len(rated) > 0 else 3.0
                 
         all_ratings = train_df["rating"].values
         self.global_mean = float(np.mean(all_ratings)) if len(all_ratings) > 0 else 3.5

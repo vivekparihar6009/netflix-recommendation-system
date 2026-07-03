@@ -15,13 +15,17 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 
 # Initialize recommender
 recommender = Recommender()
+
+# Issue 3 Fix: module-level flag so half-initialized state never reaches routes
+MODELS_LOADED = False
 try:
     recommender.load_models_and_data()
+    MODELS_LOADED = True
     print("Recommender models and datasets successfully loaded in Flask backend.")
 except Exception as e:
     import traceback
     traceback.print_exc()
-    print(f"Error loading models or dataset in Flask: {e}")
+    print(f"FATAL: Model loading failed: {e}")
     print("Make sure you have run the training pipeline first: python run_pipeline.py")
 
 # Cache movie list for autocomplete search
@@ -58,9 +62,20 @@ def home():
 def serve_figure(filename):
     return send_from_directory(config.REPORT_FIGS_DIR, filename)
 
+# Issue 3 Fix: health check route
+@app.route("/health")
+def health():
+    if not MODELS_LOADED:
+        return jsonify({"status": "unhealthy", "reason": "models not loaded"}), 503
+    return jsonify({"status": "ok"}), 200
+
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
     """Returns dataset statistics and metrics from metrics.json."""
+    # Issue 3 Fix: guard against unloaded models
+    if not MODELS_LOADED:
+        return jsonify({"error": "Service unavailable: models not loaded"}), 503
+
     num_users = recommender.mapper.num_users if recommender.mapper else 0
     num_movies = recommender.mapper.num_movies if recommender.mapper else 0
     num_ratings = len(recommender.ratings_df) if recommender.ratings_df is not None else 0
@@ -97,6 +112,10 @@ def get_stats():
 @app.route('/api/recommend', methods=['GET'])
 def get_recommendations():
     """Generates recommendations for a given user_id and model_type."""
+    # Issue 3 Fix: guard against unloaded models
+    if not MODELS_LOADED:
+        return jsonify({"error": "Service unavailable: models not loaded"}), 503
+
     user_id_str = request.args.get('user_id')
     model_type = request.args.get('model_type', 'hybrid').lower()
     k = request.args.get('k', 10, type=int)
@@ -119,8 +138,10 @@ def get_recommendations():
         recs = recommender.get_top_k_recommendations(user_id, k=k, model_type=model_type)
         formatted_recs = []
         for title, score, year in recs:
-            # Look up movie_id from title
-            mid = recommender.movie_title_to_id.get(title.lower(), 0)
+            # Issue 4 Fix: explicit None check instead of silent default 0
+            mid = recommender.movie_title_to_id.get(title.lower())
+            if mid is None:
+                mid = 0
             formatted_recs.append({
                 "movie_id": mid,
                 "title": title,
@@ -142,6 +163,10 @@ def get_recommendations():
 @app.route('/api/explain', methods=['GET'])
 def get_explanation():
     """Generates an explanation for a recommendation."""
+    # Issue 3 Fix: guard against unloaded models
+    if not MODELS_LOADED:
+        return jsonify({"error": "Service unavailable: models not loaded"}), 503
+
     user_id_str = request.args.get('user_id')
     movie_id_str = request.args.get('movie_id')
     
@@ -169,19 +194,31 @@ def get_explanation():
 @app.route('/api/similar', methods=['GET'])
 def get_similar():
     """Finds movies similar to the target title."""
+    # Issue 3 Fix: guard against unloaded models
+    if not MODELS_LOADED:
+        return jsonify({"error": "Service unavailable: models not loaded"}), 503
+
     title = request.args.get('title')
     k = request.args.get('k', 10, type=int)
     
     if not title:
         return jsonify({"status": "error", "message": "Missing 'title' parameter."}), 400
+
+    # Issue 4 Fix: explicit None check instead of silent default 0
+    mid = recommender.movie_title_to_id.get(title.lower())
+    if mid is None:
+        return jsonify({"error": f"Movie '{title}' not found in catalog"}), 404
         
     try:
         similar = recommender.get_similar_movies(title, k=k)
         formatted_similar = []
         for movie_title, score, year in similar:
-            mid = recommender.movie_title_to_id.get(movie_title.lower(), 0)
+            # Issue 4 Fix: explicit None check instead of silent default 0
+            smid = recommender.movie_title_to_id.get(movie_title.lower())
+            if smid is None:
+                smid = 0
             formatted_similar.append({
-                "movie_id": mid,
+                "movie_id": smid,
                 "title": movie_title,
                 "year": int(year),
                 "similarity_score": round(score, 4)
@@ -206,6 +243,10 @@ def get_movies():
 @app.route('/api/rate', methods=['POST'])
 def process_new_user_ratings():
     """Takes movie ratings for a cold-start user and calculates real-time recommendations."""
+    # Issue 3 Fix: guard against unloaded models
+    if not MODELS_LOADED:
+        return jsonify({"error": "Service unavailable: models not loaded"}), 503
+
     data = request.get_json()
     if not data or "ratings" not in data:
         return jsonify({"status": "error", "message": "Missing 'ratings' in request body."}), 400
@@ -225,7 +266,10 @@ def process_new_user_ratings():
         recs = recommender.get_cold_start_recommendations_from_ratings(ratings_dict, k=10)
         formatted_recs = []
         for title, score, year in recs:
-            mid = recommender.movie_title_to_id.get(title.lower(), 0)
+            # Issue 4 Fix: explicit None check instead of silent default 0
+            mid = recommender.movie_title_to_id.get(title.lower())
+            if mid is None:
+                mid = 0
             formatted_recs.append({
                 "movie_id": mid,
                 "title": title,
@@ -274,10 +318,10 @@ def process_new_user_ratings():
                             m2_title = recommender.movie_id_to_title.get(valid[1][0])
                             r2 = valid[1][2]
                             explanation = (f"We recommended '{top_rec['title']}' because it is highly similar to "
-                                          f"movies you liked: '{m1_title}' (rated {r1}★) and '{m2_title}' (rated {r2}★).")
+                                           f"movies you liked: '{m1_title}' (rated {r1}★) and '{m2_title}' (rated {r2}★).")
                         else:
                             explanation = (f"We recommended '{top_rec['title']}' because it is highly similar to "
-                                          f"'{m1_title}' which you liked (rated {r1}★).")
+                                           f"'{m1_title}' which you liked (rated {r1}★).")
                     else:
                         explanation = f"We recommended '{top_rec['title']}' based on general item similarity with your liked movies."
                     explanation += filter_suffix

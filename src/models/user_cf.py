@@ -30,18 +30,12 @@ class UserCollaborativeFiltering:
         self.interaction_matrix_csc = self.interaction_matrix.tocsc()
         
         # 2. Compute global mean and user average ratings
-        # Convert matrix to dense formats where necessary for calculations
-        dense_matrix = self.interaction_matrix.toarray()
-        
-        # Calculate mean rating for each user (only over rated items)
+        # Operate directly on the sparse matrix to avoid densification
         self.user_means = np.zeros(self.mapper.num_users)
         for u in range(self.mapper.num_users):
-            user_ratings = dense_matrix[u]
-            rated_indices = user_ratings > 0
-            if np.any(rated_indices):
-                self.user_means[u] = np.mean(user_ratings[rated_indices])
-            else:
-                self.user_means[u] = 3.0 # default fallback
+            row = self.interaction_matrix.getrow(u)
+            rated = row.data  # only non-zero values, no densification
+            self.user_means[u] = np.mean(rated) if len(rated) > 0 else 3.0
                 
         all_ratings = train_df["rating"].values
         self.global_mean = float(np.mean(all_ratings)) if len(all_ratings) > 0 else 3.5
